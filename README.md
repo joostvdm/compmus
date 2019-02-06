@@ -1,1 +1,4 @@
-# compmus
+## compmus
+
+*italics*
+**bold**
