@@ -4,7 +4,7 @@ David Bowie created an expansive body of work. Spotify's biography of him starts
 
 The corpus consists of the studio albums. Compilations, live albums and rarities will be excluded from the selection. This is to prevent overlap and to focus the results.
 
-The Berlin Trilogy consists of the albums Low (1977), Heroes (1977), and Lodger (1979). Collaborator Brian Eno's instrumental ambient influence is apparent. Let's look at how the trilogy scores at acousticness and instrumentalness in Spotify's analysis. The following plots shows acousticness and instrumentalness of the first 17 studio albums by Bowie, from his debut David Bowie (1967) to Never Let Me Down (1987).
+The Berlin Trilogy consists of the albums Low (1977), Heroes (1977), and Lodger (1979). Collaborator Brian Eno's instrumental ambient influence is apparent. Let's look at how the trilogy scores at acousticness and instrumentalness in Spotify's analysis. The following plots show acousticness and instrumentalness of the first 17 studio albums by Bowie, from his debut David Bowie (1967) to Never Let Me Down (1987).
 
 ![](acousticness_instrumentalness.png)
 
