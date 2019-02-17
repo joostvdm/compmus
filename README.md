@@ -4,6 +4,6 @@ David Bowie created an expansive body of work. Spotify's biography of him starts
 
 The corpus consists of the studio albums. Compilations, live albums and rarities will be excluded from the selection. This is to prevent overlap and to focus the results.
 
-[Week 7](testplot.png)
+![Week 7](testplot.png)
 =======
 <!--"this is a comment."-->
