@@ -1,0 +1,44 @@
+---
+title: "Storyboard"
+output: 
+  flexdashboard::flex_dashboard:
+    storyboard: true
+---
+
+### Introduction
+
+An Introduction tab, if you have a lengthy introductory text that you want users to see before encountering your visualisation. But you could also skip this tab and include the description of your corpus in the commentary for your first visualisation.
+
+Be thoughtful about the names of your tabs: although Introduction, Visualisation, and Conclusion are simple and standard, users of your website might appreciate titles with key messages, more like newspaper headlines, e.g., The Grammys celebrate angrier music than the Edisons.
+
+```{r}
+```
+
+### Visualisation
+
+Your first Visualisation tab, with commentary.
+
+If possible, make your visualisation from last week interactive.
+
+```{r}
+```
+
+### Visualisation
+
+Add a new tab with a new visualisation, ideally an interactive visualisation, incorporating Spotify’s chroma features (pitches) in some way. For example, you could try one of the following.
+
+If your corpus includes multiple recordings of the same piece, show their alignment with the dynamic time-warping techniques from class.
+If there is a noticeable outlier in your corpus, show a chromagram of that piece and annotate several key moments.
+
+```{r}
+```
+
+### Discussion
+
+A Conclusion or Discussion tab, if your overall conclusions about your corpus so far are too long to fit in the commentary for your visualisation.
+
+```{r}
+```
+
+Submit the URL to your new web page for peer review.
+
