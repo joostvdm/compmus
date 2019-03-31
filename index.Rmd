@@ -1,0 +1,674 @@
+---
+title: "Computational Musicology: David Bowie"
+output: 
+  flexdashboard::flex_dashboard:
+    storyboard: true
+    theme: flatly
+editor_options:
+  chunk_output_type: console
+---
+<!-- color the title in the top bar black -->
+<style>
+.navbar-brand {
+  color:black!important;
+}
+</style>
+
+### Introduction
+
+David Bowie created an expansive body of work. Spotify's biography of him starts by noting that "[t]he cliché about David Bowie is that he was a musical chameleon [...]" What patterns can we find in his many coloured oeuvre? Does clustering show the Berlin trilogy as an entity separate from the other albums? If so, can we see an influence of recording location in general? Do the albums with producer Tony Visconti form a cluster? I hope to visualise some interesting results.
+
+The corpus consists of the studio albums. Compilations, live albums and rarities will be excluded from the selection. This is to prevent overlap and to focus the results.
+
+<!-- Note: Some of the claims made in the following texts no longer hold. They were based on a subset of the corpus, namely the first 17 studio albums by Bowie, from his debut David Bowie (1967) to Never Let Me Down (1987). -->
+
+This analysis uses the R packages [Spotifyr](https://www.rcharlie.com/spotifyr/) and [compmus](https://jaburgoyne.github.io/compmus/) to process the data provided by the [Spotify Web API](https://developer.spotify.com/documentation/web-api/).
+
+```{r}
+#```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(spotifyr)
+library(plotly)
+library(compmus)
+library(tidymodels)
+#library(viridis) # colors
+source("spotify.R")
+
+
+# devtools::install_github('charlie86/spotifyr')
+# devtools::install_github('jaburgoyne/compmus')
+
+```
+
+```{r}
+# TO DO:
+# album The Man who sold the world staat er dubbel in
+# 'A bubblechart is a scatterplot with a third variable mapped to the size of points.'
+# http://blog.infographics.tw/2016/11/d3js-transition/
+# Arranging plots in a grid
+# https://cran.r-project.org/web/packages/cowplot/vignettes/plot_grid.html
+
+# # WAARSCHIJNLIJK VEEL BETERE METHODE OM TEXT TOE TE VOEGEN:
+# library(plotly)
+# # Make data
+# x=seq(1,10,0.3)
+# a=rnorm(length(x))*0.2
+# data=data.frame(x=x , y=-log(x)+a , my_size=a)
+# # Add a column with the hover text you need for each point
+# data$my_text=paste("Write what you want | Value of a : " , round(data$my_size,2)   , sep="")
+# # Make the plot
+# my_graph=plot_ly(data, x=x , y=y , mode="markers"   , text=my_text , hoverinfo="text+x+y" , marker=list(color="green" , size=20 , opacity=0.4))
+# my_graph
+# # https://www.r-graph-gallery.com/124-change-hover-text-in-plotly/
+
+bg_color <- '#F2F2F2' # 'grey95'
+plot_panel_color <- '#28BB9C'
+
+text_cleaner <- function(text, first_chars_of_to_be_removed_part, max_len) {
+  stripped <- sub(paste0(first_chars_of_to_be_removed_part, ".*"), "", text)
+  substr(stripped, 1, max_len)
+}
+
+# remove part of string starting with ' (20'
+# because Bowie remasters have such titles.
+# note that the '(' needs to be escaped like that
+# which is why it did not work with text_cleaner below
+label_cleaner <- function(value, max_len) {
+  stripped = gsub(" \\(20.*", "", value)
+  stripped = gsub(" \\[20.*", "", stripped)
+  substr(stripped, 1, max_len)
+}
+
+get_bowie_data <- function() {
+# use Bowie playlist made by user joostvdm
+  print('85')
+bowie <- get_playlist_audio_features('joostvdm', '4L34OFuKhWwCB9akiVC2Ak') %>%
+  add_audio_analysis
+print('88')
+bowie$album = label_cleaner(bowie$album_name, 18)
+print('90')
+
+bowie_uri = '0oSGxfWSnnOXhD2fKuz2Gy'
+bowie_albums = get_artist_albums(artist = bowie_uri, album_types = "album",
+ return_closest_artist = TRUE, access_token = get_spotify_access_token(),
+ parallelize = FALSE, future_plan = "multiprocess")
+get_bowie_release_years <- function() {
+library(httr)
+spotify_token <- get_spotify_access_token(client_id = Sys.getenv("SPOTIFY_CLIENT_ID"),
+  client_secret = Sys.getenv("SPOTIFY_CLIENT_SECRET"))
+release_dates <- c()
+#for (i in 1:10) { # leidt tot "API rate limit exceeded" error 429
+for (i in seq_along(bowie$track_uri)) {
+  uri = bowie$track_uri[i]
+  url = paste0('https://api.spotify.com/v1/tracks/', uri)
+  result = httr::GET(url = url,
+                     accept_json(),
+                     add_headers('Authorization' = paste('Bearer ', spotify_token)))
+  print(result)
+  result_text = jsonlite::fromJSON(content(result, "text"))
+  release_date = result_text$album$release_date # kan year zijn, of dag maand jaar
+  year = text_cleaner(release_date, "-", 8)
+  release_dates[[i]] = year
+  #print(result)
+  #print(result_text$album$release_date)
+}
+
+print(release_dates)
+bowie$release_date = release_dates
+}
+get_bowie_release_years
+
+
+# bowie$release_date <- 0000
+# print('121')
+# better_bowie_years <- function(df) {
+#   library(httr)
+#   spotify_token <- get_spotify_access_token(client_id = Sys.getenv("SPOTIFY_CLIENT_ID"),
+#                                             client_secret = Sys.getenv("SPOTIFY_CLIENT_SECRET"))
+#   #
+#   unique_album_rows <- df %>% distinct(album_name, .keep_all = TRUE)
+#   years <- c()
+#   
+#   for (i in seq_along(unique_album_rows$track_uri)) {
+#   uri = unique_album_rows$track_uri[i]
+#   url = paste0('https://api.spotify.com/v1/tracks/', uri)
+#   result = httr::GET(url = url,
+#                      accept_json(),
+#                      add_headers('Authorization' = paste('Bearer ', spotify_token)))
+#   #print(result)
+#   result_text = jsonlite::fromJSON(content(result, "text"))
+#   release_date = result_text$album$release_date # kan year zijn, of dag maand jaar
+#   year = text_cleaner(release_date, "-", 8)
+#   years[[i]] = ifelse(length(year) > 0, year, 0000)
+#   }
+#   unique_album_rows$release_date = years
+#   print(unique_album_rows)
+# }
+# years <- better_bowie_years(bowie)
+# print('146')
+# 
+# #for (i in seq_along(years$album_name)) {
+# #  name = years$album_name[i]
+# #  year = years$release_date[i]
+# #  bowie[bowie$album_name == name, , drop = FALSE]$release_date = year
+# #}
+# 
+# #df <- bowie
+# years_vec <- c()
+# for (i in seq_along(df$album_name)) {
+#   #name <- df$album_name[i]
+#   print('158')
+#   name <- bowie$album_name[i]
+#   #print(name)
+#   print('161')
+#     year <- years[years$album_name == name, , drop = FALSE]$release_date
+#   #print(year)
+#   print('164')
+#   df$release_date[i] = year
+#   print('166')
+#   bowie$release_date[i] = year
+#     print('167')
+# }
+# #bowie <- df
+
+bowie$album2 <- reorder(bowie$album, as.numeric(bowie$release_date))
+
+trilogy_vec <-  purrr::map_chr(bowie$album2, ~ ifelse((. == '\"Heroes\"' | . == 'Low' | . == 'Lodger'),
+                                              'Berlin Trilogy', 'Tracks from other albums'))
+
+tritri_vec <- map_chr(bowie$track_name, ~ ifelse((. == 'Sense of Doubt - 2017 Remastered Version' |
+                                                  . == 'Moss Garden - 2017 Remastered Version' |
+                                                  . == 'Neuköln - 2017 Remastered Version'),
+                                                 ' trilogy within', ' -'))
+
+# map <- function(value, start1, stop1, start2, stop2) {
+#   return (start2 + (stop2 - start2) * ((value - start1) / (stop1 - start1)))
+# }
+
+#df %>%
+# mutate_at(vars(starts_with("x")), #Applying the function to vars that starts with "x"
+#           funs((. - min(., na.rm = T))/(max(., na.rm = T) - min(., na.rm = T)))) 
+
+two_squared <- sqrt(2)
+
+#bowie4 <-
+bowie %>%
+  mutate(trilogy = trilogy_vec,
+         tri_within = tritri_vec,
+         # sadness = 1.0 - ((valence + energy) * 0.5))
+         sadness = ((two_squared - sqrt(valence^2 + energy^2)) / two_squared) - 0.5) %>%
+#bowie <- bowie %>%
+#bowie %>%
+   #mutate(trilogy = factor(trilogy, levels = c('Tracks from other albums','Berlin Trilogy'), ordered = TRUE))
+  mutate(trilogy = factor(trilogy, levels = c('Berlin Trilogy','Tracks from other albums'), ordered = TRUE))
+#%>%
+#  mutate(trilogy = factor(trilogy)) %>%
+#  mutate(trilogy = relevel(trilogy, ref = 'Berlin Trilogy'))
+
+#saveRDS(bowie4, file="bowie4.Rds") # save result in a file
+#saveRDS(bowie, file="bowie_unprocessed.Rds")
+saveRDS(bowie, file="bowie.Rds") # save result in a file
+
+}
+#get_bowie_data()
+#bowie <- readRDS("bowie4.Rds")
+bowie <- readRDS("bowie.Rds")
+```
+
+### Classification
+
+```{r}
+# ```{r, eval = FALSE, include = FALSE}
+bowie_class <-
+    recipe(trilogy ~
+               danceability +
+               energy +
+               loudness +
+               speechiness +
+               acousticness +
+               instrumentalness +
+               liveness +
+               valence +
+               tempo +
+               duration_ms
+               +
+               C + `C#|Db` + D + `D#|Eb` +
+               E + `F` + `F#|Gb` + G +
+               `G#|Ab` + A + `A#|Bb` + B +
+               c01 + c02 + c03 + c04 + c05 + c06 +
+               c07 + c08 + c09 + c10 + c11 + c12
+               ,
+           data = bowie) %>% 
+    step_center(all_predictors()) %>%
+    step_scale(all_predictors()) %>%
+    # step_range(all_predictors()) %>% 
+    #prep(indie) %>% 
+  prep(bowie) %>% 
+    juice
+
+### Cross-Validation
+bowie_cv <- bowie_class %>% vfold_cv(10)
+
+#### $k$-Nearest Neighbour
+
+# A $k$-nearest neighbour classifier often works just fine with only one neighbour. It is very sensitive to the choice of features, however. Let's check the performance as a baseline and come back to it later.
+
+bowie_knn <- nearest_neighbor(neighbors = 1) %>% set_engine('kknn')
+
+predict_knn <- function(split)
+    fit(bowie_knn, trilogy ~ ., data = analysis(split)) %>% 
+    predict(assessment(split), type = 'class') %>%
+    bind_cols(assessment(split))
+
+#After a little awkwardness with cross-validation, we can use `conf_mat` to get a confusion matrix.
+
+bowie_cv %>% 
+    mutate(pred = map(splits, predict_knn)) %>% unnest(pred) %>% 
+    conf_mat(truth = trilogy, estimate = .pred_class)
+
+#These matrices `autoplot` in two forms.
+
+bowie_cv %>%
+    mutate(pred = map(splits, predict_knn)) %>% unnest(pred) %>% 
+    #conf_mat(truth = playlist, estimate = .pred_class) %>% 
+    conf_mat(truth = trilogy, estimate = .pred_class) %>% 
+    autoplot(type = 'mosaic')
+
+bowie_cv %>%
+    mutate(pred = map(splits, predict_knn)) %>% unnest(pred) %>% 
+    conf_mat(truth = trilogy, estimate = .pred_class) %>% 
+    autoplot(type = 'heatmap')
+
+# We can also compute statistics like accuracy, Cohen's kappa, or the J-measure.
+
+bowie_cv %>%
+    mutate(pred = map(splits, predict_knn)) %>% unnest(pred) %>% 
+    metric_set(accuracy, kap, j_index)(truth = trilogy, estimate = .pred_class)
+```
+
+***
+
+Let's use a k-nearest neighbour algorithm to predict if a track is part of the Berlin Trilogy, with k = 1 and 10-fold cross-validation. Based on the features danceability, energy, loudness, speechiness, acousticness, instrumentalness, liveness, valence, tempo, duration_ms.
+
+Note that the high accuracy is a bit misleading due to the relative rarity of the Trilogy label.
+
+### Random Forests
+
+```{r}
+bowie_forest <- rand_forest() %>% set_engine('randomForest')
+predict_forest <- function(split)
+    fit(bowie_forest, trilogy ~ ., data = analysis(split)) %>% 
+    predict(assessment(split), type = 'class') %>%
+    bind_cols(assessment(split))
+```
+
+```{r}
+# ```{r, eval = FALSE, include = FALSE}
+bowie_class %>% 
+    fit(bowie_forest, trilogy ~ ., data = .) %>% 
+    pluck('fit') %>% 
+    randomForest::varImpPlot(main = 'Important features')
+
+# forest_metrics <- bowie_cv %>% 
+#     mutate(pred = map(splits, predict_forest)) %>% 
+#     unnest(pred) %>% 
+#     metric_set(accuracy, kap, j_index)(truth = trilogy, estimate = .pred_class)
+```
+
+***
+
+The most important features are .. 
+
+Random forests give us the best-quality ranking of feature importance, and we can plot it with `randomForest::varImpPlot`. Again, it is clear that timbre, specifically Component 1 (power) and Component 11, is important. Note that because random forests are indeed random, the accuracy and feature rankings will vary (slightly) every time you re-run the code.
+
+```{r}
+bowie_scatterplot <- function(x_aes, y_aes, size_aes, xlims) {
+
+# plot_panel_color <- 'white'
+# bg_color <- 'grey95'
+# text_color <- 'grey40'
+# important_points_colour = 'black'
+# other_points_colour = '#28BB9C'
+
+# plot_panel_color <- '#28BB9C'
+# bg_color <- 'grey95'
+# text_color <- 'grey40'
+# important_points_colour = 'white'
+# other_points_colour = 'black'
+
+#plot_panel_color <- 'lightskyblue'
+#plot_panel_color <- 'orange'
+#plot_panel_color <- 'violet'
+#plot_panel_color <- 'limegreen'
+text_color <- 'grey40'
+important_points_colour = 'black'
+other_points_colour = 'white'
+  
+#plot_panel_color <- 'white'#'#28BB9C' #'lightskyblue' # '#28BB9C' # 'lightskyblue' #'grey90' # 'grey10'
+#bg_color <- 'grey95' # '#677480'  # '#008080' #'#28BB9C' # '#677494' # 'whitesmoke'  # 'black'
+#bg_color <- 'grey95'
+#text_color <- 'grey80'
+#text_color <- 'grey40'
+#important_points_colour = 'black' # 'white' #'black' # 'thistle1' #'violet' #'chartreuse'  #'violet'# 'whitesmoke' #'violet' #'chartreuse'  #'lightskyblue' #'limegreen' #'cyan' #'magenta' #'#39FF14'  # 'green' # '#98ff98' # '#ffffb3'
+#other_points_colour = '#28BB9C' #'white' #'black'#'white' #'yellow' # 'lightskyblue' # 'orange' #'grey' #'navajowhite' # 'grey' #'violet' # 'lightskyblue'
+
+p <- bowie %>%
+  ggplot(aes(x = eval(as.symbol(x_aes)),
+             y = eval(as.symbol(y_aes)),
+             colour = trilogy,
+           alpha = trilogy,
+    #       shape = trilogy,
+    #         shape = tri_within, # vershijnt helaas in legend
+             # size = trilogy, # eval(as.symbol(size_aes)),
+             text = paste0(text_cleaner(track_name, ' -', 100), '\n',
+                    label_cleaner(album_name, 100), ' ', release_date, "\n",
+                    format(eval(as.symbol(y_aes)), scientific=FALSE, drop0trailing=TRUE), ' ', y_aes, '\n',
+                    format(eval(as.symbol(x_aes)), scientific=FALSE, drop0trailing=TRUE), ' ', x_aes, '\n',
+                    format(eval(as.symbol(size_aes)), scientific=FALSE, drop0trailing=TRUE), ' ', size_aes))) +
+  # scale_colour_manual(values = c(other_points_colour, important_points_colour)
+  #                     , guide = guide_legend(reverse = TRUE)
+  #                     ) +
+  #scale_color_viridis(discrete = TRUE) +
+  scale_alpha_ordinal(range = c(1, 0.6)) + # c(1, 0.4)) +
+  #scale_size_continuous(range = c(1, 2)) +
+#  scale_size_manual(values = c(1, 1.4), guide = 'none') +
+  #scale_shape(solid = FALSE) +
+  #scale_shape_manual(values = c(3, 16)) +
+#  scale_shape_manual(values = c(17, 16)) + # triangle, round
+  scale_colour_manual(values = c(important_points_colour, other_points_colour)) + # guide_legend('tracks', reverse= TRUE)) +
+  guides(colour = FALSE) +
+  geom_polygon(data = bowie[bowie$tri_within == ' trilogy within', , drop = FALSE],
+               inherit.aes = FALSE,
+               aes(x = eval(as.symbol(x_aes)),
+                   y = eval(as.symbol(y_aes)),
+                   text = 'trilogy within'),   # voor legenda: col = 'trilogy within'),
+               colour = important_points_colour,
+               fill = plot_panel_color,
+               size = 0.2
+               ) +
+  geom_point(data = bowie, fill = FALSE, position = 'jitter',
+             size = 1) +
+  # render black points on top of white points
+  geom_point(data = bowie[bowie$trilogy=='Berlin Trilogy', , drop = FALSE], size = 1) +
+  # render hairlines along borders
+  geom_rug(data = bowie[bowie$trilogy=='Berlin Trilogy', , drop = FALSE],
+           inherit.aes = FALSE,
+           aes(x = eval(as.symbol(x_aes))),
+           size = 0.1,
+           colour = important_points_colour,
+           sides = 'b') +
+  geom_rug(data = bowie[bowie$trilogy=='Berlin Trilogy', , drop = FALSE],
+           inherit.aes = FALSE,
+           aes(y = eval(as.symbol(y_aes))),
+           size = 0.1,
+           colour = important_points_colour,
+           sides = 'l') +
+  geom_rug(data = bowie[bowie$trilogy!='Berlin Trilogy', , drop = FALSE],
+           inherit.aes = FALSE,
+           aes(x = eval(as.symbol(x_aes))),
+           size = 0.1,
+           #alpha = 1,
+           colour = other_points_colour,
+           sides= 't') +
+  geom_rug(data = bowie[bowie$trilogy!='Berlin Trilogy', , drop = FALSE],
+           inherit.aes = FALSE,
+           aes(y = eval(as.symbol(y_aes))),
+           size = 0.1,
+           colour = other_points_colour,
+           sides= 'r') +
+  xlim(xlims[1], xlims[2]) +
+  ylim(0, 1) +
+  labs(x = x_aes, y = y_aes) + # axis labels
+  theme(legend.title = element_blank(),
+        axis.title = element_text(family = 'monospace', colour = text_color),
+        axis.ticks = element_line(colour = text_color),
+        axis.text = element_text(colour = text_color),
+        plot.background = element_rect(fill = bg_color),
+        legend.background = element_rect(fill = bg_color),
+        panel.background = element_rect(fill = plot_panel_color),
+        legend.text = element_text(colour = text_color),
+        panel.grid = element_blank())
+
+#ggplotly(p, tooltip = c("text"))
+#ggplotly(p, tooltip = c("text", "x")) %>% layout( legend = list(x = 0.01, y = 0.95) )
+}
+```
+
+### Instrumentation
+<!-- : Instrumentalness versus Acousticness -->
+
+```{r}
+size_a <- 'danceability'
+p <- bowie_scatterplot(x_aes = 'acousticness',
+                       y_aes = 'instrumentalness',
+                       size_aes = size_a,
+                       xlims = c(0, 1))
+ggplotly(p, tooltip = c("text"))
+```
+
+***
+
+The Berlin Trilogy consists of the albums Low (1977), Heroes (1977), and Lodger (1979). Collaborator Brian Eno's instrumental ambient influence is apparent. Let's look at how the trilogy scores at instrumentalness and acousticness in Spotify's analysis.
+<!-- These plots show acousticness and instrumentalness of the first 17 studio albums by Bowie, from his debut David Bowie (1967) to Never Let Me Down (1987). -->
+
+The mean instrumentalness of the corpus is `r format(mean(bowie$instrumentalness), digits = 3, scientific=FALSE, drop0trailing=TRUE)` and the median is `r format(median(bowie$instrumentalness), digits = 3, scientific=FALSE, drop0trailing=TRUE)`.
+
+Where most albums score low on instrumentalness, Heroes and Low exhibit a high degree of instrumentalness. Lodger is somewhat instrumental, but not enough to identify the Berlin Trilogy by instrumentalness alone. But if we combine instrumentalness (at least one track above 0.7) with a wide spread on the acousticness scale, we have a description of what makes the trilogy stand out in this visualization.
+
+"acousticness: A confidence measure from 0.0 to 1.0 of whether the track is acoustic. 1.0 represents high confidence the track is acoustic. The distribution of values for this feature look like this:" [insert picture]
+
+<!-- The size of the dots represents `r size_a`. -->
+
+### Emotion
+<!-- : Energy versus Valence -->
+
+```{r}
+# bowie_scatterplot(x_aes = 'valence', y_aes <- 'energy', size_aes <- 'speechiness')
+emo_colour <- 'grey30' # 'white' # 'grey40'
+p <- bowie_scatterplot(x_aes = 'valence',
+                  y_aes = 'energy',
+                  size_aes = size_a,
+                  xlims = c(0, 1)) +
+     #annotate(geom = 'text', ) # element_text(family = "monospace"))#, face = 'italic'))
+     #geom_text(x = 0.08, y = 0.96, label = 'ANGRY', size = 4, aes(fontface = 'bold.italic')) +
+     annotate(geom = 'text', x = 0.08, y = 0.96, label = 'ANGRY',# size = 4,
+              colour = emo_colour) +
+     #geom_text(x = 0.93, y = 0.96, label = 'HAPPY', size = 4, font = 'italic') +
+     annotate(geom = 'text', x = 0.93, y = 0.96, label = 'HAPPY',# size = 4,
+              colour = emo_colour) +
+     #geom_text(x = 0.05, y = 0.03, label = 'SAD', size = 4) +
+     annotate(geom = 'text', x = 0.05, y = 0.03, label = 'SAD',# size = 4,
+              colour = emo_colour) +
+     #geom_text(x = 0.94, y = 0.03, label = 'CALM', size = 4) +
+     annotate(geom = 'text', x = 0.94, y = 0.03, label = 'CALM',# size = 4,
+              colour = emo_colour)
+     #annotate("text", x = 0.5, y = 0.5,
+     #label = paste('italic(R)'), parse = TRUE)
+     #annotate(geom = 'text', x = 0.5, y = 0.5, label = 'ANGRY', size = 4)
+
+     ggplotly(p, tooltip = c("text"))
+```
+
+***
+
+Sadness is in the bottom left corner, happyness in the top right corner, anger/fear in the top left corner, and calmness is in the bottom right corner. Like the vast majority of music, the tracks are not calm. The tracks are spread out on the emotional spectrum but shun the angry/fearful corner, where some of the darker alternative genres live. This is pop music, after all. That said, the trilogy within the Trilogy has a somewhat gloomy feel which makes it stand out.
+
+### Sadness
+
+```{r}
+#bowie_scatterplot(x_aes = 'sadness', y_aes <- 'instrumentalness', size_aes <- 'speechiness')
+p <- bowie_scatterplot(x_aes = 'sadness',
+                  y_aes = 'instrumentalness',
+                  size_aes = size_a,
+                  xlims = c(0.5, -0.5))
+ggplotly(p, tooltip = c("text"))
+```
+
+***
+
+Note that sadness on the x scale goes from 0.5 to - 0.5. Sadness is defined here as low valence - which means negative emotions - combined with low energy. Compare with the previous plot, where sadness is in the bottom left corner. Sadness is based on a track's distance to that corner.
+
+'Modern Love' on the album Let's Dance is almost the happiest song.
+
+### Instrumentalness versus Valence
+
+```{r}
+#bowie_scatterplot(x_aes = 'valence', y_aes <- 'instrumentalness', size_aes <- 'speechiness')
+p <- bowie_scatterplot(x_aes = 'valence',
+                  y_aes = 'instrumentalness',
+                  size_aes = size_a,
+                  xlims = c(0, 1))
+ggplotly(p, tooltip = c("text"))
+```
+
+***
+
+Valence is a measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry). [Cited from Spotify.]
+
+The instrumental 'Weeping Wall' on the album Low does not sound as sad as one would perhaps expect given the title. The Spotify algorithm estimates its valence at 0.559.
+
+The mean valence of the corpus is `r format(mean(bowie$valence), digits = 3, scientific=FALSE, drop0trailing=TRUE)` and the median is `r format(median(bowie$valence), digits = 3, scientific=FALSE, drop0trailing=TRUE)`.
+
+The five tracks with lowest valence are all from the Berlin Trilogy albums Low and "Heroes". 'Sense of Doubt' is the track with lowest valence in the corpus (0.0365). The descending four-note motif suggests suspense or even dread and sounds like it was sampled from a thriller or horror film. 'Sense of Doubt' is the first of three instrumental tracks on "Heroes". The three triangles in the top left corner represent this trilogy within the Trilogy. If you connect these three tracks with lines to get a triangle, 'Art Decade' from the album Low falls within it. These low-valence instrumental tracks make Low and "Heroes" stand out from the more traditional pop sound of most Bowie albums. Do these instrumentals constitute the sonic quintessence of the Berlin Trilogy?
+
+### Outlier: Sense of Doubt
+
+```{r}
+#```{r, eval = FALSE, include = FALSE}
+#```{r}
+sense_of_doubt <- '1d89lSLqTpMMpcKBWzVWcm'
+#lets_turn_on <- '4VxYZDAawOigTg9eXNCgwD'
+sensedata <- 
+    get_tidy_audio_analysis(sense_of_doubt) %>%
+    select(segments) %>% unnest(segments) %>% 
+    select(start, duration, pitches)
+
+sense <- sensedata %>% 
+    mutate(pitches = map(pitches, compmus_normalise, 'euclidean')) %>% 
+    compmus_gather_chroma %>% 
+    ggplot(
+        aes(
+            x = start + duration / 2, 
+            width = duration, 
+            y = pitch_class, 
+            fill = value)) + 
+    geom_tile() +
+    labs(x = 'Time (s)', y = NULL, fill = 'Magnitude') +
+    theme_minimal() +
+    theme(plot.background = element_rect(fill = bg_color),
+          panel.background = element_rect(fill = bg_color)) +
+    #scale_fill_gradient(low = "black", high = "white")
+    #scale_fill_gradient(low = "black", high = "lightskyblue")
+    scale_fill_gradient(low = "black", high = "#aaf0d1") # aka 'magic mint'
+
+# rgb 223 219 206
+# aaf0d1
+
+ggplotly(sense)
+```
+
+***
+
+'Sense of Doubt' is the first of three instrumental tracks on "Heroes". This is the track with lowest valence in the corpus (0.0365).
+
+In the chromagram we see the filtered white noise of the first seven seconds. Throughout the instrumental the A is very present.
+
+<!-- <center> -->
+<!-- <br> -->
+<!-- Listen. -->
+<!-- <br><br> -->
+<!-- <iframe src="https://open.spotify.com/embed/track/1d89lSLqTpMMpcKBWzVWcm" width="250" height="80" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe> -->
+<!-- </center> -->
+
+<center>
+<br>
+Listen.
+<br><br>
+<iframe src="https://open.spotify.com/embed/track/1d89lSLqTpMMpcKBWzVWcm" width="250" height="340" frameborder="0" allowtransparency="true" allow="encrypted-media"></iframe>
+</center>
+
+### Timbre
+
+```{r, eval = FALSE, include = FALSE}
+#```{r}
+bzt_track <- sense_of_doubt #lets_turn_on # sense_of_doubt
+bzt <- 
+    get_tidy_audio_analysis(bzt_track) %>% 
+    compmus_align(bars, segments) %>% 
+    select(bars) %>% unnest(bars) %>% 
+    mutate(
+        pitches = 
+            map(segments, 
+                compmus_summarise, pitches, 
+                method = 'rms', norm = 'euclidean')) %>% 
+    mutate(
+        timbre = 
+            map(segments, 
+                compmus_summarise, timbre, 
+                method = 'mean'))
+
+bzt %>% 
+    compmus_self_similarity(timbre, 'cosine') %>% 
+    ggplot(
+        aes(
+            x = xstart + xduration / 2, 
+            width = xduration,
+            y = ystart + yduration / 2,
+            height = yduration,
+            fill = d)) + 
+    geom_tile() +
+    coord_fixed() +
+    scale_fill_viridis_c(option = 'E', guide = 'none') +
+    theme_classic() +
+    labs(x = '', y = '') +
+    # mijn toevoegingen:
+    # scale_fill_gradient(low = "black", high = "white") +
+    theme(legend.position="none")
+```
+
+***
+
+In 'Sense of Doubt', the low-register four-note piano riff is juxtaposed with a high pitched synth line. Perhaps this alternation can be seen in the plot, but it is not very clear. The structure is not simple (at the level of musical bars). Further analysis is needed.
+
+### Track-level Summaries
+
+```{r, eval = FALSE, include = FALSE}
+#```{r}
+track_level <-
+    bowie %>% 
+    add_audio_analysis() # wordt boven al gedaan als het goed is!!
+
+track_level %>% 
+    mutate(
+        sections = 
+            map(
+                sections, 
+                summarise_at, 
+                vars(tempo, loudness, duration), 
+                list(section_mean = mean, section_sd = sd))) %>% 
+    unnest(sections) %>%
+    ggplot(
+        aes(
+            x = tempo, 
+            y = tempo_section_sd, 
+            colour = trilogy 
+            #,alpha = loudness
+            )) +
+    geom_point(aes(size = duration / 60)
+               ,alpha = 0.3) + 
+    geom_rug() + 
+    theme_minimal() +
+    ylim(0, 5) + 
+    labs(
+        x = 'Mean Tempo (bpm)', 
+        y = 'SD Tempo', 
+        colour = '',# 'Trilogy', 
+        size = 'Duration (min)'
+        #,alpha = 'Volume (dBFS)'
+        )
+```
+
+***
+
+The Berlin Trilogy does not stand out in terms of tempo or track duration.
